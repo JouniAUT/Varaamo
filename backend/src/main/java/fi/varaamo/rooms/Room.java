@@ -18,11 +18,16 @@ public class Room {
 	@Column(nullable = false, unique = true)
 	private String name;
 
+	@Column(nullable = false)
+	private int capacity;
+
 	protected Room() {
+		
 	}
 
-	public Room(String name) {
+	public Room(String name, int capacity) {
 		this.name = name;
+		this.capacity = capacity;
 	}
 
 	public Long getId() {
@@ -33,7 +38,15 @@ public class Room {
 		return name;
 	}
 
+	public int getCapacity() {
+		return capacity;
+	}
+
 	public void setName(String name) {
 		this.name = name;
+	}
+
+	public void setCapacity(int capacity) {
+		this.capacity = capacity;
 	}
 }
