@@ -655,3 +655,190 @@ To run locally (PowerShell):
 Want me to also add a small “Create room” UI, or is room creation intentionally API-only for now?
 
 Made changes.
+
+# New chat (Adding new attribute)
+
+User: I want to add capacity attribute to Room.java. So when reservation is made user can find correct sized meeting room. I think I have to update also RoomService, RoomController, CreateReservationRequest? Do I need to update something else?
+
+GitHub Copilot: You already **have** a `capacity` field in Room.java, but the rest of the codebase is still behaving like a room only has a `name` (e.g., `RoomService.create()` calls `new Room(trimmedName)` which doesn’t match your current `Room` constructors). So yes: you’ll need to update more than just the entity.
+
+## What you need to update
+
+### 1) **Entity + constructors**
+- Either:
+  - update all callers to pass `capacity`, **or**
+  - add a convenience constructor `Room(String name)` that sets a default capacity.
+
+### 2) **Room create API**
+To store capacity you must update:
+- `CreateRoomRequest` (add `capacity`)
+- `RoomController.create()` (pass capacity to service)
+- `RoomService.create()` (accept capacity, validate it)
+- `RoomResponse` (include capacity so clients can see it)
+
+### 3) **Database schema / migrations**
+Because `capacity` is `@Column(nullable = false)`, your DB table **must** have a NOT NULL `capacity` column and existing rows need a value.
+- Add a Flyway/Liquibase migration (likely under `src/main/resources/db/migration` if you use Flyway).
+
+### 4) **Reservation API**
+`CreateReservationRequest` usually **does not need capacity** because the reservation is for a specific `roomId`.
+If your goal is “user can find correct sized meeting room”, that’s typically done by:
+- adding filtering to the rooms list endpoint (e.g. `GET /rooms?minCapacity=6`), or
+- adding a dedicated “search available rooms” endpoint.
+
+`ReservationQueryService` doesn’t need changes for capacity.
+
+---
+
+## Suggested code changes
+
+### Update `RoomService` to accept capacity and validate
+````java
+package fi.varaamo.rooms;
+
+import fi.varaamo.api.error.BadRequestException;
+import java.util.List;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class RoomService {
+
+	private final RoomRepository roomRepository;
+
+	public RoomService(RoomRepository roomRepository) {
+		this.roomRepository = roomRepository;
+	}
+
+	@Transactional
+	public Room create(String name, int capacity) {
+		if (name == null || name.isBlank()) {
+			throw new BadRequestException("name is required");
+		}
+		if (capacity <= 0) {
+			throw new BadRequestException("capacity must be greater than 0");
+		}
+
+		String trimmedName = name.trim();
+		if (roomRepository.findByName(trimmedName).isPresent()) {
+			throw new BadRequestException("Room name already exists");
+		}
+		return roomRepository.save(new Room(trimmedName, capacity));
+	}
+
+	@Transactional(readOnly = true)
+	public List<Room> list() {
+		return roomRepository.findAll();
+	}
+}
+````
+
+### Update controller to use request.capacity() and return it
+````java
+package fi.varaamo.api.rooms;
+
+import fi.varaamo.rooms.Room;
+import fi.varaamo.rooms.RoomService;
+import jakarta.validation.Valid;
+import java.net.URI;
+import java.util.List;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/rooms")
+public class RoomController {
+
+	private final RoomService roomService;
+
+	public RoomController(RoomService roomService) {
+		this.roomService = roomService;
+	}
+
+	@PostMapping
+	public ResponseEntity<RoomResponse> create(@Valid @RequestBody CreateRoomRequest request) {
+		Room room = roomService.create(request.name(), request.capacity());
+		return ResponseEntity.created(URI.create("/rooms/" + room.getId()))
+				.body(new RoomResponse(room.getId(), room.getName(), room.getCapacity()));
+	}
+
+	@GetMapping
+	public List<RoomResponse> list() {
+		return roomService.list().stream()
+				.map(room -> new RoomResponse(room.getId(), room.getName(), room.getCapacity()))
+				.toList();
+	}
+}
+````
+
+### Update/Create `CreateRoomRequest` and `RoomResponse`
+(Adjust paths if your package differs.)
+````java
+package fi.varaamo.api.rooms;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
+
+public record CreateRoomRequest(
+		@NotBlank String name,
+		@Positive int capacity
+) {
+}
+````
+
+````java
+package fi.varaamo.api.rooms;
+
+public record RoomResponse(
+		Long id,
+		String name,
+		int capacity
+) {
+}
+````
+
+### (Optional) Add a convenience constructor to avoid breaking older call sites
+If anything else still calls `new Room(name)`:
+````java
+package fi.varaamo.rooms;
+
+// ...existing imports...
+
+@Entity
+@Table(name = "room")
+public class Room {
+	// ...existing code...
+
+	protected Room() { }
+
+	public Room(String name) {
+		this(name, 1); // pick a sensible default (or remove this ctor and update all callers)
+	}
+
+	public Room(String name, int capacity) {
+		this.name = name;
+		this.capacity = capacity;
+	}
+
+	// ...existing code...
+}
+````
+
+---
+
+## Don’t forget: DB migration
+If you use Flyway, you’ll need something like:
+- `ALTER TABLE room ADD COLUMN capacity INT NOT NULL DEFAULT 1;`
+- then (optional) drop default after backfilling.
+
+---
+
+## If you want “find correct sized room”
+Capacity matters most on the **room search/list** side, not reservation creation. If you tell me whether you want:
+1) filter rooms by capacity only, or  
+2) search *available* rooms by capacity + time range,  
+I can suggest the minimal endpoint/repository changes.
