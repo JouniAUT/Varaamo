@@ -45,6 +45,7 @@ export function RoomsList({ rooms, loading, error, onRefresh }: Props) {
               <TableRow>
                 <TableCell>ID</TableCell>
                 <TableCell>Nimi</TableCell>
+                <TableCell>Kapasiteetti</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -52,6 +53,7 @@ export function RoomsList({ rooms, loading, error, onRefresh }: Props) {
                 <TableRow key={room.id} hover>
                   <TableCell width={100}>{room.id}</TableCell>
                   <TableCell>{room.name}</TableCell>
+                  <TableCell>{room.capacity}</TableCell>
                 </TableRow>
               ))}
               {rooms.length === 0 && (
