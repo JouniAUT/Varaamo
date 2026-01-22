@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Box,
@@ -27,10 +27,32 @@ export function CreateReservationForm({ rooms, onCreated }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [participantCount, setParticipantCount] = useState<number | ''>('')
+
+  const filteredRooms = useMemo(() => {
+    if (participantCount === '') {
+      return rooms
+    }
+    return rooms.filter((room) => room.capacity >= participantCount)
+  }, [rooms, participantCount])
+
+  useEffect(() => {
+    if (roomId === '' || participantCount === '') {
+      return
+    }
+    const selectedRoom = rooms.find((r) => r.id === roomId)
+    if (!selectedRoom) {
+      setRoomId('')
+      return
+    }
+    if (selectedRoom.capacity < participantCount) {
+      setRoomId('')
+    }
+  }, [roomId, participantCount, rooms])
 
   const canSubmit = useMemo(() => {
-    return roomId !== '' && title.trim() !== '' && startsAt !== '' && endsAt !== ''
-  }, [roomId, title, startsAt, endsAt])
+    return roomId !== '' && title.trim() !== '' && startsAt !== '' && endsAt !== '' && participantCount !== ''
+  }, [roomId, title, startsAt, endsAt, participantCount])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -57,11 +79,13 @@ export function CreateReservationForm({ rooms, onCreated }: Props) {
         title: title.trim(),
         startsAt: startsIso,
         endsAt: endsIso,
+        participantCount: Number(participantCount)
       })
       setSuccess('Varaus luotu.')
       setTitle('')
       setStartsAt('')
       setEndsAt('')
+      setParticipantCount('')
       onCreated()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Varauksen luonti epäonnistui'
@@ -84,6 +108,15 @@ export function CreateReservationForm({ rooms, onCreated }: Props) {
             {success && <Alert severity="success">{success}</Alert>}
 
             <TextField
+              label="Osallistujamäärä"
+              type="number"
+              value={participantCount}
+              onChange={(e) => setParticipantCount(e.target.value === '' ? '' : Number(e.target.value))}
+              required
+              fullWidth
+            /> 
+
+            <TextField
               select
               label="Tila"
               value={roomId}
@@ -92,9 +125,9 @@ export function CreateReservationForm({ rooms, onCreated }: Props) {
               fullWidth
             >
               <MenuItem value="">Valitse tila</MenuItem>
-              {rooms.map((room) => (
+              {filteredRooms.map((room) => (
                 <MenuItem key={room.id} value={room.id}>
-                  {room.name}
+                  {room.name} (max {room.capacity})
                 </MenuItem>
               ))}
             </TextField>

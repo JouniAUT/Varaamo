@@ -16,6 +16,7 @@ export type Reservation = {
   startsAt: string
   endsAt: string
   title: string
+  participantCount: number
 }
 
 export type CreateReservationRequest = {
@@ -23,4 +24,5 @@ export type CreateReservationRequest = {
   startsAt: string
   endsAt: string
   title: string
+  participantCount: number
 }
