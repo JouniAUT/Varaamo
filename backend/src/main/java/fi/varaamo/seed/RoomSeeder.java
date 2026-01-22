@@ -2,11 +2,13 @@ package fi.varaamo.seed;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import fi.varaamo.rooms.Room;
 import fi.varaamo.rooms.RoomRepository;
 
+@Profile("dev")
 @Component
 public class RoomSeeder implements CommandLineRunner {
 
