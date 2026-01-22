@@ -1,15 +1,17 @@
 package fi.varaamo.reservations;
 
+import java.time.Clock;
+import java.time.ZonedDateTime;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import fi.varaamo.api.error.BadRequestException;
 import fi.varaamo.api.error.ConflictException;
 import fi.varaamo.api.error.NotFoundException;
 import fi.varaamo.config.TimeConfig;
 import fi.varaamo.rooms.Room;
 import fi.varaamo.rooms.RoomRepository;
-import java.time.Clock;
-import java.time.ZonedDateTime;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ReservationService {
@@ -29,7 +31,7 @@ public class ReservationService {
 	}
 
 	@Transactional
-	public Reservation create(Long roomId, ZonedDateTime startsAt, ZonedDateTime endsAt, String title) {
+	public Reservation create(Long roomId, ZonedDateTime startsAt, ZonedDateTime endsAt, String title, int participantCount) {
 		if (startsAt == null || endsAt == null) {
 			throw new BadRequestException("startsAt and endsAt are required");
 		}
@@ -54,7 +56,7 @@ public class ReservationService {
 			throw new ConflictException("Reservation overlaps an existing reservation in the room");
 		}
 
-		Reservation reservation = new Reservation(room, startsAtHelsinki, endsAtHelsinki, title);
+		Reservation reservation = new Reservation(room, startsAtHelsinki, endsAtHelsinki, title, participantCount);
 		return reservationRepository.save(reservation);
 	}
 

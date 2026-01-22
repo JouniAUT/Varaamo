@@ -1,5 +1,7 @@
 package fi.varaamo.reservations;
 
+import java.time.ZonedDateTime;
+
 import fi.varaamo.rooms.Room;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,7 +12,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.time.ZonedDateTime;
 
 @Entity
 @Table(name = "reservation")
@@ -33,14 +34,18 @@ public class Reservation {
 	@Column(nullable = false)
 	private String title;
 
+	@Column(nullable = false)
+	private int participantCount;
+
 	protected Reservation() {
 	}
 
-	public Reservation(Room room, ZonedDateTime startsAt, ZonedDateTime endsAt, String title) {
+	public Reservation(Room room, ZonedDateTime startsAt, ZonedDateTime endsAt, String title, int participantCount) {
 		this.room = room;
 		this.startsAt = startsAt;
 		this.endsAt = endsAt;
 		this.title = title;
+		this.participantCount = participantCount;
 	}
 
 	public Long getId() {
@@ -61,5 +66,9 @@ public class Reservation {
 
 	public String getTitle() {
 		return title;
+	}
+
+	public int getParticipantCount() {
+		return participantCount;
 	}
 }
