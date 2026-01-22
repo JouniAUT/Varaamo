@@ -842,3 +842,180 @@ Capacity matters most on the **room search/list** side, not reservation creation
 1) filter rooms by capacity only, or  
 2) search *available* rooms by capacity + time range,  
 I can suggest the minimal endpoint/repository changes.
+
+# New chat (Adding the capacity features to the frontend)
+
+User: We need capacity attribute for the Room Entity so when reservation is made we can choose room which is big enough for the meeting. I think we need to update Room.java, RoomService.java, RoomController.java, Reservation.java, ReservationController.java and ReservationService.java. Do you think we have to update something else?
+
+GitHub Copilot: I’ll first scan the existing Room/Reservation DTOs and services to see how create/list flows work, then implement `capacity` (and a `participantCount` on reservations so we can validate capacity), update controllers/requests/responses, and finally run `mvn test` to ensure everything still passes.
+
+Created 5 todos
+
+I’m going to locate the existing request/response records and repository methods so we can update the right DTOs and keep the API consistent.
+
+Searched for regex `record\s+CreateRoomRequest|class\s+CreateRoomRequest|interface\s+CreateRoomRequest|CreateRoomRequest\b` (`**/backend/src/main/java/**`), 2 results
+
+Searched for regex `record\s+RoomResponse|class\s+RoomResponse|RoomResponse\b` (`**/backend/src/main/java/**`), 5 results
+
+Searched for regex `interface\s+RoomRepository|class\s+RoomRepository|RoomRepository\b` (`**/backend/src/main/java/**`), 18 results
+
+Searched for regex `record\s+CreateReservationRequest|class\s+CreateReservationRequest|CreateReservationRequest\b` (`**/backend/src/main/java/**`), 2 results
+
+Searched for regex `record\s+ReservationResponse|class\s+ReservationResponse|ReservationResponse\b` (`**/backend/src/main/java/**`), 6 results
+
+Searched for regex `class\s+ReservationService\b` (`**/backend/src/main/java/**`), 1 result
+
+Read [](file:///c%3A/Varaamo/backend/src/main/java/fi/varaamo/api/rooms/CreateRoomRequest.java)
+
+Read [](file:///c%3A/Varaamo/backend/src/main/java/fi/varaamo/api/rooms/RoomResponse.java)
+
+Read [](file:///c%3A/Varaamo/backend/src/main/java/fi/varaamo/rooms/RoomRepository.java)
+
+Read [](file:///c%3A/Varaamo/backend/src/main/java/fi/varaamo/api/reservations/CreateReservationRequest.java)
+
+Read [](file:///c%3A/Varaamo/backend/src/main/java/fi/varaamo/api/reservations/ReservationResponse.java)
+
+Read [](file:///c%3A/Varaamo/backend/src/main/java/fi/varaamo/reservations/ReservationService.java)
+
+Got it. I’ve found the current DTOs: rooms only have `name`, and reservations don’t carry any “meeting size”, so the backend currently has no way to enforce “room big enough” at reservation time.
+
+Next I’ll:
+- add `capacity` to `Room` (and update room create/list responses),
+- add `participantCount` to reservation create + entity (so we can validate against room capacity),
+- add a `minCapacity` filter on `GET /rooms` to help the UI choose.
+
+Now I’m going to inspect `ReservationRepository` / `ReservationQueryService` and any tests that construct these DTOs so we update everything that will break.
+
+User: List all the files I have to update if we add the capacity attribute to the room entity.
+
+GitHub Copilot: I’ll scan both backend and frontend for room DTO usage and `Room` field access, so the file list is complete and we don’t miss tests or TypeScript API types.
+
+Searched for regex `RoomResponse\b|CreateRoomRequest\b|/rooms` (`**/backend/src/main/java/**`), 9 results
+
+Searched for regex `getName\(\)|new\s+Room\(|findByName\(` (`**/backend/src/main/java/**`), 6 results
+
+Searched for regex `Room\b.*capacity|capacity\b` (`**/backend/src/main/java/**`), no results
+
+Searched for regex `rooms\b|RoomResponse|CreateRoomRequest|/rooms` (`**/frontend/src/**`), 20 results
+
+Searched for regex `type\s+Room|interface\s+Room|export\s+type\s+Room|export\s+interface\s+Room` (`**/frontend/src/**`), 1 result
+
+Searched for regex `Room\b` (`**/backend/src/test/java/**`), 3 results
+
+Read [](file:///c%3A/Varaamo/frontend/src/api/types.ts)
+
+Read [](file:///c%3A/Varaamo/backend/src/test/java/fi/varaamo/ReservationApiTests.java)
+
+Read [](file:///c%3A/Varaamo/frontend/src/api/rooms.ts)
+
+Read [](file:///c%3A/Varaamo/frontend/src/features/rooms/RoomsList.tsx)
+
+Read [](file:///c%3A/Varaamo/frontend/src/App.tsx)
+
+Searched for regex `post\("/rooms"\)|/rooms\b|CreateRoomRequest\b|RoomResponse\b` (`**/backend/src/test/java/**`), 1 result
+
+**Backend (Required)**
+- Room.java (add `capacity` field + getter/constructor)
+- RoomService.java (validate capacity, pass into `new Room(...)`)
+- CreateRoomRequest.java (accept `capacity`, add `@Min(1)`/`@NotNull`)
+- RoomResponse.java (include `capacity`)
+- RoomController.java (wire request/response)
+
+**Tests (Required if POST /rooms requires capacity)**
+- ReservationApiTests.java (its helper posts to `/rooms`)
+
+**Frontend (Only if you want it typed/shown/filtered)**
+- types.ts (extend `Room` with `capacity`)
+- RoomsList.tsx (show capacity column)
+
+If the goal is “choose a room big enough when creating a reservation”, you’ll also need to add a meeting size field to reservations (e.g. `participantCount`) and validate it against `room.capacity` in the reservation creation flow.
+
+User: @workspace /explain Object literal may only specify known properties, and 'participantCount' does not exist in type 'CreateReservationRequest'.
+
+Workspace: The TypeScript error means your `createReservation(...)` function is typed to accept a `CreateReservationRequest`, and that type **doesn’t include** a `participantCount` field. In TS, object literals are “exact” against the target type, so extra properties are rejected.
+
+### Fix options (pick the one that matches your API)
+
+#### 1) The API *should* accept `participantCount` → update the type
+Find `CreateReservationRequest` (often in an API client/types file) and add the field.
+
+````ts
+// ...existing code...
+export type CreateReservationRequest = {
+  roomId: number
+  title: string
+  startsAt: string
+  endsAt: string
+  participantCount: number // <-- add this (or make it optional with ?:)
+}
+// ...existing code...
+````
+
+If you also validate requests (e.g., Zod/Yup), update that schema too, and ensure the backend actually supports this property.
+
+#### 2) The API expects a *different name* → rename the property you send
+Check your backend/OpenAPI/types for the correct field name (common alternatives: `participants`, `attendeeCount`, `numberOfParticipants`), then change:
+
+````tsx
+await createReservation({
+  roomId: Number(roomId),
+  title: title.trim(),
+  startsAt: startsIso,
+  endsAt: endsIso,
+  // participantCount: Number(participantCount)
+  attendeeCount: Number(participantCount) // example: use the real expected name
+})
+````
+
+#### 3) The API does *not* support participant count → remove it
+If it’s not part of the request contract, don’t send it.
+
+---
+
+### Gotcha to watch
+If `participantCount` is a text input, `Number('')` becomes `0`. If empty should be invalid, validate before calling the API.
+
+---
+
+**Clarifying questions (so the fix matches your project):**
+1) Can you paste the `CreateReservationRequest` type (and where it’s defined)?  
+2) What does the backend expect for this field name (if any)?
+
+User: I've made all the required changes to backend. I want to change the logic of the reservation form.
+
+1. When user chooses participantCount in CreatereservationForm the MenuItem "Valitse tila! shows only rooms which have the same capacity or smaller.
+
+2. If user haven't chosen any number for capacity the dropdown menu will show all the rooms.
+
+What would you suggest for the solution? I think i have to update the frontend and backend aswell.
+
+GitHub Copilot: Optimizing tool selection...I’ll inspect the current frontend reservation form and API typings, then implement client-side filtering (and optionally a backend `minCapacity` query param if you want server-side filtering) so the dropdown only offers rooms that fit the selected participant count.
+
+Read [](file:///c%3A/Varaamo/frontend/src/features/reservations/CreateReservationForm.tsx)
+
+Read [](file:///c%3A/Varaamo/frontend/src/api/reservations.ts)
+
+Read [](file:///c%3A/Varaamo/frontend/src/api/rooms.ts)
+
+Searched for text `participantCount|capacity` (`**/frontend/src/**`), 13 results
+
+Read [](file:///c%3A/Varaamo/frontend/src/api/types.ts)
+
+I’m going to update the reservation form to derive a `filteredRooms` list from `participantCount`, and reset the selected room if it no longer fits, so the dropdown only shows suitable rooms when a count is chosen.
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Checked [](file:///c%3A/Varaamo/frontend/src/features/reservations/CreateReservationForm.tsx), no problems found
+
+Completed: *Inspect current Room/Reservation APIs* (1/5)
+
+Ran terminal command: cd C:\Varaamo\frontend; npm test
+
+Made changes.
+
