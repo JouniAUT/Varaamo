@@ -1019,3 +1019,91 @@ Ran terminal command: cd C:\Varaamo\frontend; npm test
 
 Made changes.
 
+# New chat (Add a seeder for initializing developmnet data)
+
+User: I want to create 6 room objects, so when I start the application I have some rooms already in the system. Where would you place them?
+
+GitHub Copilot: I’d place those 6 initial rooms in **startup seed data**, and for this project the cleanest options are:
+
+## Option A (simplest): `data.sql`
+Put inserts into:
+
+- `c:\Varaamo\src\main\resources\data.sql`
+
+Spring Boot will run `schema.sql`/Hibernate DDL first (you currently use `ddl-auto: create-drop`), then run `data.sql` on startup. This is ideal for **static “demo” data** like a fixed set of rooms.
+
+Pros: no Java code, very obvious, quick to edit.  
+Cons: tied to table/column names (if you refactor entities, you must update SQL).
+
+## Option B (more flexible): a dev-only Java seeder
+Create something like an `ApplicationRunner`/`CommandLineRunner` that calls `RoomRepository.saveAll(...)`, but **guard it with a profile**:
+
+- e.g. `@Profile("dev")`
+
+Pros: refactor-safe (uses JPA), can check “if no rooms exist then seed”.  
+Cons: a bit more code.
+
+### My recommendation
+For “6 rooms always present when I start the app” in a small project: **`data.sql`**.  
+If you expect the `Room` schema to change often and want refactor safety: **dev-only seeder**.
+
+If you tell me which option you want (A or B), I can implement it.
+
+User: How would you implement option B?
+
+GitHub Copilot: ## Option B (dev-only Java seeder): implementation approach
+
+I’d implement it as a **Spring Boot startup runner** that inserts rooms **only in the `dev` profile** and **only if the table is empty**.
+
+### 1) Create a “seed” component that runs on startup
+- Use `ApplicationRunner` (or `CommandLineRunner`).
+- Annotate with `@Profile("dev")` so it **never runs in prod**.
+- Mark it `@Transactional` so all inserts succeed/fail together.
+- Logic:
+  - `if (roomRepository.count() > 0) return;`
+  - `roomRepository.saveAll(List.of(...6 rooms...));`
+
+### 2) Decide how to activate the dev profile
+Either:
+- **Command-line (recommended):**
+  - `.\mvnw spring-boot:run -Dspring-boot.run.profiles=dev`
+  - or `java -jar ... --spring.profiles.active=dev`
+- Or set a local default in config (I usually avoid committing “dev always on” unless you want that).
+
+### 3) Keep it aligned with your `Room` entity fields
+The seeder must populate **whatever fields are required** by your `Room` entity (e.g., `name`, maybe `capacity`, etc.). I won’t assume the correct constructor/fields.
+
+### 4) Notes for your current setup
+Because you’re using `ddl-auto: create-drop`, the DB is recreated each start, so the seeder will effectively run every boot anyway—which is fine for dev/demo data. The “seed only if empty” check becomes more important later if you switch to `update` or a persistent DB.
+
+---
+
+### Clarifying questions (so I don’t guess wrong)
+1) What fields does `Room` currently require (besides `id`)?  
+2) What should the 6 rooms be (names, capacities)?
+
+If you reply with that and say **“Create the dev seeder now”**, I’ll add the exact class (and profile wiring if needed).
+
+User: Show me where in the folder tree you would place the seeder with room data.
+
+GitHub Copilot: I’d place it under the main source tree, in a small dedicated package like **`seed`** (or `devseed`) so it’s easy to find and clearly “startup data”.
+
+Folder tree placement:
+
+- `c:\Varaamo\src\main\java\fi\varaamo\seed\RoomSeeder.java`
+
+Example tree snippet:
+
+- Varaamo
+  - `src\main\java\fi\varaamo\`
+    - `api\`
+    - `config\`
+    - `reservations\`
+    - `rooms\`
+    - `seed\`
+      - `RoomSeeder.java`  ← **startup runner (`@Profile("dev")`)**
+    - `VaraamoApplication.java`
+
+If you prefer to make it explicitly dev-only by package naming too, use:
+
+- `c:\Varaamo\src\main\java\fi\varaamo\dev\RoomSeeder.java`
