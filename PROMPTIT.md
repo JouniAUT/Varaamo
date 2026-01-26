@@ -1107,3 +1107,27 @@ Example tree snippet:
 If you prefer to make it explicitly dev-only by package naming too, use:
 
 - `c:\Varaamo\src\main\java\fi\varaamo\dev\RoomSeeder.java`
+
+# New chat (Validate capacity when createing a reservation)
+
+User: Would you recommend updating the backend, beacuse we added the feature where user gets only the rooms which have capacity that is big enough for the reservation? Now the logic relies only on frontend solution.
+
+Workspace: Collecting workspace informationYes—recommend updating the backend as well.
+
+Right now the “room big enough” rule is enforced only in the UI (see `CreateReservationForm` where it filters by `room.capacity >= participantCount`). That’s good UX, but it’s **not a security/data-integrity guarantee**: anyone can still POST directly to `POST /reservations` and reserve a too-small room.
+
+### Backend changes to add (recommended)
+1. **Validate capacity on reservation creation**
+   Add a check in `fi.varaamo.reservations.ReservationService.create` after loading the room:
+   - reject if `participantCount <= 0` (if not already validated by bean validation)
+   - reject if `participantCount > room.capacity` (return `400 BAD_REQUEST` or `409 CONFLICT`; typically `400` because the request is invalid for that room)
+
+   This is the authoritative business rule; the frontend should just *help* the user comply.
+
+2. **(Optional) Support server-side filtering of rooms by required size**
+   Extend `fi.varaamo.api.rooms.RoomController.list` to accept something like `GET /rooms?minCapacity=8` so the UI can fetch only suitable rooms (useful if rooms grow large, or to avoid stale client-side state).
+
+3. **Add/adjust tests**
+   Add an integration test alongside `ReservationApiTests` to ensure reserving a room with `participantCount > capacity` is rejected.
+
+Keeping the frontend filtering is still worthwhile (better UX), but the backend should enforce the same constraint to keep data consistent.
