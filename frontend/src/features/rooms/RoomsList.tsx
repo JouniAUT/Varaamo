@@ -1,7 +1,6 @@
 import {
   Alert,
   CircularProgress,
-  Button,
   Paper,
   Table,
   TableBody,
@@ -20,14 +19,11 @@ type Props = {
   onRefresh: () => void
 }
 
-export function RoomsList({ rooms, loading, error, onRefresh }: Props) {
+export function RoomsList({ rooms, loading, error }: Props) {
   return (
     <>
       <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
         <span style={{ flexGrow: 1 }}>Tilat</span>
-        <Button onClick={onRefresh} disabled={loading} size="small" variant="outlined">
-          Päivitä
-        </Button>
       </Typography>
 
       {error && (
