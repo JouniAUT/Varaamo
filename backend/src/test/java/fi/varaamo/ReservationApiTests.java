@@ -1,9 +1,12 @@
 package fi.varaamo;
 
-import fi.varaamo.config.TimeConfig;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
+
+import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -12,10 +15,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import static org.hamcrest.Matchers.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import fi.varaamo.config.TimeConfig;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -37,9 +41,9 @@ class ReservationApiTests {
 
 	@Test
 	void createsReservation_andRejectsOverlap_butAllowsTouching() throws Exception {
-		String roomId = createRoom("Neuvotteluhuone A");
+		String roomId = createRoom("Neuvotteluhuone A", 10);
 
-		createReservation(roomId, "2026-01-21T11:00:00+02:00", "2026-01-21T12:00:00+02:00", "First");
+		createReservation(roomId, "2026-01-21T11:00:00+02:00", "2026-01-21T12:00:00+02:00", "First", 5);
 
 		mockMvc.perform(post("/reservations")
 					.contentType(MediaType.APPLICATION_JSON)
@@ -47,7 +51,8 @@ class ReservationApiTests {
 							"\"roomId\":" + roomId + "," +
 							"\"startsAt\":\"2026-01-21T11:30:00+02:00\"," +
 							"\"endsAt\":\"2026-01-21T12:30:00+02:00\"," +
-							"\"title\":\"Overlapping\"" +
+							"\"title\":\"Overlapping\"," +
+							"\"participantCount\":5" +
 							"}"
 					))
 				.andExpect(status().isConflict())
@@ -59,7 +64,8 @@ class ReservationApiTests {
 							"\"roomId\":" + roomId + "," +
 							"\"startsAt\":\"2026-01-21T12:00:00+02:00\"," +
 							"\"endsAt\":\"2026-01-21T13:00:00+02:00\"," +
-							"\"title\":\"Touching\"" +
+							"\"title\":\"Touching\"," +
+							"\"participantCount\":5" +
 							"}"
 					))
 				.andExpect(status().isCreated())
@@ -69,7 +75,7 @@ class ReservationApiTests {
 
 	@Test
 	void rejectsPastReservations_andStartAfterEnd() throws Exception {
-		String roomId = createRoom("Neuvotteluhuone B");
+		String roomId = createRoom("Neuvotteluhuone B", 10);
 
 		mockMvc.perform(post("/reservations")
 					.contentType(MediaType.APPLICATION_JSON)
@@ -77,7 +83,8 @@ class ReservationApiTests {
 							"\"roomId\":" + roomId + "," +
 							"\"startsAt\":\"2026-01-21T09:00:00+02:00\"," +
 							"\"endsAt\":\"2026-01-21T10:00:00+02:00\"," +
-							"\"title\":\"Past\"" +
+							"\"title\":\"Past\"," +
+							"\"participantCount\":5" +
 							"}"
 					))
 				.andExpect(status().isBadRequest())
@@ -89,17 +96,40 @@ class ReservationApiTests {
 							"\"roomId\":" + roomId + "," +
 							"\"startsAt\":\"2026-01-21T12:00:00+02:00\"," +
 							"\"endsAt\":\"2026-01-21T11:00:00+02:00\"," +
-							"\"title\":\"InvalidOrder\"" +
+							"\"title\":\"InvalidOrder\"," +
+							"\"participantCount\":5" +
 							"}"
 					))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("BAD_REQUEST"));
 	}
 
-	private String createRoom(String name) throws Exception {
+	@Test
+	void rejectsReservationWhenParticipantCountExceedsCapacity() throws Exception {
+		String roomId = createRoom("Neuvotteluhuone C", 2);
+
+		mockMvc.perform(post("/reservations")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{" +
+							"\"roomId\":" + roomId + "," +
+							"\"startsAt\":\"2026-01-21T11:00:00+02:00\"," +
+							"\"endsAt\":\"2026-01-21T12:00:00+02:00\"," +
+							"\"title\":\"TooManyParticipants\"," +
+							"\"participantCount\":3" +
+						"}"
+					))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+				.andExpect(jsonPath("$.message", containsString("capacity")));
+	}
+
+	private String createRoom(String name, int capacity) throws Exception {
 		String response = mockMvc.perform(post("/rooms")
 					.contentType(MediaType.APPLICATION_JSON)
-					.content("{\"name\":\"" + name + "\"}"))
+					.content("{" +
+							"\"name\":\"" + name + "\"," +
+							"\"capacity\":" + capacity +
+					"}"))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.id").exists())
 				.andExpect(jsonPath("$.name").value(name))
@@ -114,14 +144,15 @@ class ReservationApiTests {
 		return idValue;
 	}
 
-	private void createReservation(String roomId, String startsAt, String endsAt, String title) throws Exception {
+	private void createReservation(String roomId, String startsAt, String endsAt, String title, int participantCount) throws Exception {
 		mockMvc.perform(post("/reservations")
 					.contentType(MediaType.APPLICATION_JSON)
 					.content("{" +
 							"\"roomId\":" + roomId + "," +
 							"\"startsAt\":\"" + startsAt + "\"," +
 							"\"endsAt\":\"" + endsAt + "\"," +
-							"\"title\":\"" + title + "\"" +
+							"\"title\":\"" + title + "\"," +
+							"\"participantCount\":" + participantCount +
 							"}"
 					))
 				.andExpect(status().isCreated());
