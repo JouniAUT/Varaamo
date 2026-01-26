@@ -72,6 +72,11 @@ export function CreateReservationForm({ rooms, onCreated }: Props) {
       return
     }
 
+    if (new Date(startsIso).getTime() < Date.now()) {
+      setError('Varauksen alkamisaika ei voi olla menneisyydessä.')
+      return
+    }
+
     setSubmitting(true)
     try {
       await createReservation({
