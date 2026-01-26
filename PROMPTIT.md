@@ -1131,3 +1131,233 @@ Right now the “room big enough” rule is enforced only in the UI (see `Create
    Add an integration test alongside `ReservationApiTests` to ensure reserving a room with `participantCount > capacity` is rejected.
 
 Keeping the frontend filtering is still worthwhile (better UX), but the backend should enforce the same constraint to keep data consistent.
+
+# New chat (Changing the language of the error message when user makes an overlapping reservation)
+
+User: When the user tries to make an overlapping reservation, the program gives an error message in English. I would like to change that in Finnish but I can't locate the source of the error message. Can you help me locating it?
+
+Workspace: Collecting workspace informationThe English text is coming from the **backend**, not the React UI.
+
+Flow when an overlap happens:
+
+1. The overlap rule is checked in `fi.varaamo.reservations.ReservationService.create`.
+2. On overlap it throws `fi.varaamo.api.error.ConflictException` **with an English message** (e.g. `"Reservation overlaps an existing reservation in the room"`).
+3. The global handler `fi.varaamo.api.error.ApiExceptionHandler.handleConflict` returns that exception message as `ApiError.message`.
+4. The frontend `apiFetch` turns that JSON `message` into the thrown error’s `.message` and your form shows it (you do `err.message`) via `apiFetch` and `ApiRequestError`.
+
+So to change the overlap message to Finnish, the first place to look is:
+
+- `fi.varaamo.reservations.ReservationService` — the `throw new ConflictException("...")` for overlaps.
+
+And the reason it surfaces verbatim is:
+
+- `fi.varaamo.api.error.ApiExceptionHandler` — it uses `ex.getMessage()` when building the response for conflicts.
+
+
+User: What if I want to bypass it, and show the message from frontend?
+
+GitHub Copilot: Yes—if you want to **ignore the backend’s English `message`** and show a **Finnish message from the frontend**, do it where the HTTP error is turned into a thrown `Error`.
+
+Right now your UI displays `err.message`:
+
+- `CreateReservationForm.tsx` → `catch` → `setError(err.message)`
+
+So the clean bypass is:
+
+1) Make your API client throw an error that includes **HTTP status** (and optionally backend `code`).
+2) In the form’s `catch`, when it’s a **409 Conflict**, show your own Finnish text.
+
+## 1) Frontend: include status/code in the thrown error
+
+Update your shared HTTP helper (commonly http.ts) to throw a typed error containing `status` and backend `code`.
+
+````ts
+// ...existing code...
+
+export class ApiRequestError extends Error {
+  status: number
+  code?: string
+
+  constructor(opts: { status: number; code?: string; message: string }) {
+    super(opts.message)
+    this.name = 'ApiRequestError'
+    this.status = opts.status
+    this.code = opts.code
+  }
+}
+
+// ...existing code...
+
+export async function apiFetch(input: RequestInfo | URL, init?: RequestInit) {
+  const res = await fetch(input, init)
+
+  if (!res.ok) {
+    // ApiError: { code, message, timestamp }
+    const body = await res.json().catch(() => null)
+    const code: string | undefined = body?.code
+    const message: string = body?.message ?? res.statusText ?? 'Request failed'
+    throw new ApiRequestError({ status: res.status, code, message })
+  }
+
+  return res
+}
+
+// ...existing code...
+````
+
+> If you already have an `ApiRequestError` class in this file, adjust it instead of adding a new one.
+
+## 2) UI: override 409 with Finnish text
+
+Then in your form:
+
+````tsx
+import type { FormEvent } from 'react'
+// ...existing code...
+import { ApiRequestError } from '../../api/http'
+// ...existing code...
+
+// inside handleSubmit catch:
+  } catch (err) {
+    if (err instanceof ApiRequestError && err.status === 409) {
+      setError('Valittu tila on jo varattu tuolle ajalle.')
+      return
+    }
+    const message = err instanceof Error ? err.message : 'Varauksen luonti epäonnistui'
+    setError(message)
+  } finally {
+// ...existing code...
+````
+
+### Note (important)
+With your current backend handler, all conflicts come back with `code: "CONFLICT"`, so this will override **every** 409 with the same Finnish message. If you want it only for “overlap”, the best long-term solution is to make the backend return a **specific code** like `RESERVATION_OVERLAP`, and map **that** in the frontend.
+
+If you tell me which file contains `apiFetch` / the HTTP helper in your repo (or paste http.ts), I can tailor the exact patch to your current code.
+
+User: import type { ApiError } from './types'
+
+export class ApiRequestError extends Error {
+  readonly status: number
+  readonly code?: string
+
+  constructor(message: string, status: number, code?: string) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.status = status
+    this.code = code
+  }
+}
+
+async function tryReadJson(response: Response): Promise<unknown | undefined> {
+  const contentType = response.headers.get('content-type') || ''
+  if (!contentType.includes('application/json')) return undefined
+  try {
+    return await response.json()
+  } catch {
+    return undefined
+  }
+}
+
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      Accept: 'application/json',
+      ...(init?.headers ?? {}),
+    },
+  })
+
+  if (response.ok) {
+    if (response.status === 204) {
+      return undefined as T
+    }
+    return (await response.json()) as T
+  }
+
+  const body = await tryReadJson(response)
+  const apiError = body as Partial<ApiError> | undefined
+
+  const message =
+    (apiError && typeof apiError.message === 'string' && apiError.message) ||
+    `Pyyntö epäonnistui (HTTP ${response.status})`
+
+  const code = apiError && typeof apiError.code === 'string' ? apiError.code : undefined
+
+  throw new ApiRequestError(message, response.status, code)
+}
+
+
+Here is the http.ts code.
+
+GitHub Copilot: You already have what you need: `apiFetch` throws an `ApiRequestError` that includes `status` (and `code`). So you can **ignore the backend message** for overlaps by catching `ApiRequestError` and overriding `409`.
+
+Patch `CreateReservationForm.tsx` like this:
+
+````tsx
+import type { FormEvent } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  Alert,
+  Box,
+  Button,
+  MenuItem,
+  Paper,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material'
+import { createReservation } from '../../api/reservations'
+import type { Room } from '../../api/types'
+import { datetimeLocalToIso } from '../../utils/datetime'
+import { ApiRequestError } from '../../api/http'
+
+type Props = {
+  rooms: Room[]
+  onCreated: () => void
+}
+
+export function CreateReservationForm({ rooms, onCreated }: Props) {
+  // ...existing code...
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setSuccess(null)
+
+    // ...existing code...
+
+    setSubmitting(true)
+    try {
+      await createReservation({
+        roomId: Number(roomId),
+        title: title.trim(),
+        startsAt: startsIso,
+        endsAt: endsIso,
+        participantCount: Number(participantCount),
+      })
+      setSuccess('Varaus luotu.')
+      setTitle('')
+      setStartsAt('')
+      setEndsAt('')
+      setParticipantCount('')
+      onCreated()
+    } catch (err) {
+      // Override backend (English) conflict message with Finnish
+      if (err instanceof ApiRequestError && err.status === 409) {
+        setError('Tila on jo varattu valitulle ajalle.')
+        return
+      }
+
+      const message = err instanceof Error ? err.message : 'Varauksen luonti epäonnistui'
+      setError(message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // ...existing code...
+}
+````
+
+### Note
+This overrides **all** `409 CONFLICT` errors with that Finnish text. If you later want only “overlap” conflicts (and not other conflicts), the backend should return a more specific `code` than `"CONFLICT"` so you can check `err.code` too.
