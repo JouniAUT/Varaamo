@@ -1361,3 +1361,84 @@ export function CreateReservationForm({ rooms, onCreated }: Props) {
 
 ### Note
 This overrides **all** `409 CONFLICT` errors with that Finnish text. If you later want only “overlap” conflicts (and not other conflicts), the backend should return a more specific `code` than `"CONFLICT"` so you can check `err.code` too.
+
+# New chat (Change the time picker)
+
+User: I want to change the time picker. I want it just to show minutes: 00, 15, 30 and 45. Can we do that? 
+
+GitHub Copilot: I’ll first inspect how the reservation form currently captures time, then I’ll adjust the UI to only allow 15‑minute increments (00/15/30/45) and quickly sanity-check that the value we send to the backend stays in the expected format.
+
+Read [](file:///c%3A/Varaamo/frontend/src/features/reservations/CreateReservationForm.tsx)
+
+Read [](file:///c%3A/Varaamo/frontend/src/utils/datetime.ts)
+
+Read [](file:///c%3A/Varaamo/frontend/src/api/reservations.ts)
+
+Read [](file:///c%3A/Varaamo/frontend/src/api/types.ts)
+
+I’ve found the time inputs are plain `datetime-local` fields; next I’ll set them to 15-minute steps (00/15/30/45) and add a small validation so odd-minute values can’t be submitted.
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Checked [](file:///c%3A/Varaamo/frontend/src/features/reservations/CreateReservationForm.tsx), no problems found
+
+Ran terminal command: cd C:\Varaamo\frontend; npm -s test
+
+Checked background terminal output
+
+Read [](file:///c%3A/Varaamo/frontend/package.json)
+
+Ran terminal command: npm run -s lint
+
+Ran terminal command: npm run -s build
+
+Searched for regex `slotProps\s*=\s*\{\s*\{\s*htmlInput|inputProps\s*=\s*\{` (`**/frontend/src/**/*.tsx`), 2 results
+
+Yes — I switched the `datetime-local` pickers to 15-minute increments.
+
+- Updated the two time fields in CreateReservationForm.tsx to use `step=900` (15 minutes), so the picker offers only `00, 15, 30, 45`.
+- Added a submit-time guard so manually typed “odd” minutes can’t be submitted (you’ll get an error message instead).
+
+If you’d prefer the UI to *only* show a dropdown (no free typing at all), I can swap these to separate selects (date + hour + fixed minute options).
+
+Made changes.
+
+User: This is now what i actually meant. I want the dropdown menu to show 00, 15, 30 and 45. Is that possible?
+
+GitHub Copilot: I’ll re-open the current form code and then switch the time inputs to use explicit dropdowns for minutes (00/15/30/45) so the UI is consistent across browsers.
+
+Read [](file:///c%3A/Varaamo/frontend/src/features/reservations/CreateReservationForm.tsx)
+
+Read [](file:///c%3A/Varaamo/frontend/src/utils/datetime.ts)
+
+I’m going to replace the native `datetime-local` inputs with separate Date + Hour + Minute dropdowns so minutes are explicitly limited to 00/15/30/45 in the UI.
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Checked [](file:///c%3A/Varaamo/frontend/src/features/reservations/CreateReservationForm.tsx), no problems found
+
+Ran terminal command: npm run -s lint
+
+Yes — that’s possible, but not reliably with the browser’s native `datetime-local` picker (different browsers render that “dropdown” differently). To make it consistently show a minutes dropdown with only `00, 15, 30, 45`, I changed the form UI to explicit selects.
+
+- Updated the reservation form in CreateReservationForm.tsx so:
+  - Date is selected with a date picker (`type="date"`)
+  - Hour is a dropdown (`00`–`23`)
+  - Minutes is a dropdown limited to `00, 15, 30, 45`
+- The submitted value format stays the same (`YYYY-MM-DDTHH:mm`), so `datetimeLocalToIso(...)` keeps working unchanged.
+
+If you want, I can also make “End date” auto-fill from the start date (common UX) so you usually only pick the end time.
+
+Made changes.
