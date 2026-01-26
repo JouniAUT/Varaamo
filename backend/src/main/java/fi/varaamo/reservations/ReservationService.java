@@ -51,6 +51,10 @@ public class ReservationService {
 		Room room = roomRepository.findById(roomId)
 				.orElseThrow(() -> new NotFoundException("Room not found: " + roomId));
 
+		if (participantCount > room.getCapacity()) {
+			throw new BadRequestException("Participant count exceeds room capacity");
+		}
+
 		boolean overlaps = reservationRepository.existsOverlappingInRoom(room.getId(), startsAtHelsinki, endsAtHelsinki);
 		if (overlaps) {
 			throw new ConflictException("Reservation overlaps an existing reservation in the room");
