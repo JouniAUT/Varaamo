@@ -13,6 +13,7 @@ import {
 import { createReservation } from '../../api/reservations'
 import type { Room } from '../../api/types'
 import { datetimeLocalToIso } from '../../utils/datetime'
+import { ApiRequestError } from '../../api/http'
 
 type Props = {
   rooms: Room[]
@@ -93,6 +94,12 @@ export function CreateReservationForm({ rooms, onCreated }: Props) {
       setParticipantCount('')
       onCreated()
     } catch (err) {
+
+      if (err instanceof ApiRequestError && err.status === 409) {
+        setError('Tila on jo varattu valitulle ajalle.')
+        setSubmitting(false)
+        return
+      }
       const message = err instanceof Error ? err.message : 'Varauksen luonti epäonnistui'
       setError(message)
     } finally {
