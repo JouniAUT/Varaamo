@@ -34,7 +34,8 @@ public class ReservationController {
 				request.roomId(),
 				request.startsAt(),
 				request.endsAt(),
-				request.title()
+				request.title(),
+				request.participantCount()
 		);
 		return ResponseEntity.created(URI.create("/reservations/" + reservation.getId()))
 				.body(toResponse(reservation));
@@ -62,7 +63,8 @@ public class ReservationController {
 				reservation.getRoom().getId(),
 				reservation.getStartsAt(),
 				reservation.getEndsAt(),
-				reservation.getTitle()
+				reservation.getTitle(),
+				reservation.getParticipantCount()
 		);
 	}
 }

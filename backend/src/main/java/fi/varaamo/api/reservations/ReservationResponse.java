@@ -7,6 +7,7 @@ public record ReservationResponse(
 		Long roomId,
 		ZonedDateTime startsAt,
 		ZonedDateTime endsAt,
-		String title
+		String title,
+		int participantCount
 ) {
 }

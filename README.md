@@ -12,7 +12,7 @@ If `./mvnw` complains about `JAVA_HOME`, set it to your JDK path (example below)
 ## Build & Test (Windows PowerShell)
 
 ```powershell
-cd C:\Varaamo
+cd C:\Varaamo\backend
 $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 .\mvnw test
@@ -21,7 +21,7 @@ $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 ## Run (Windows PowerShell)
 
 ```powershell
-cd C:\Varaamo
+cd C:\Varaamo\backend
 $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 .\mvnw spring-boot:run

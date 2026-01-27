@@ -7,6 +7,7 @@ export type ApiError = {
 export type Room = {
   id: number
   name: string
+  capacity: number
 }
 
 export type Reservation = {
@@ -15,6 +16,7 @@ export type Reservation = {
   startsAt: string
   endsAt: string
   title: string
+  participantCount: number
 }
 
 export type CreateReservationRequest = {
@@ -22,4 +24,5 @@ export type CreateReservationRequest = {
   startsAt: string
   endsAt: string
   title: string
+  participantCount: number
 }

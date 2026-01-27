@@ -46,6 +46,7 @@ function App() {
           onChange={(_, value) => setTab(value)}
           variant="scrollable"
           scrollButtons="auto"
+          textColor='inherit'
         >
           <Tab label="Tilat" />
           <Tab label="Varaukset" />

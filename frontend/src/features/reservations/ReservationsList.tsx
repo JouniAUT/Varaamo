@@ -90,6 +90,7 @@ export function ReservationsList({ rooms, refreshToken }: Props) {
             <TableHead>
               <TableRow>
                 <TableCell>Otsikko</TableCell>
+                <TableCell>Osallistujamäärä</TableCell>
                 <TableCell>Tila</TableCell>
                 <TableCell>Alkaa</TableCell>
                 <TableCell>Päättyy</TableCell>
@@ -100,6 +101,7 @@ export function ReservationsList({ rooms, refreshToken }: Props) {
               {reservations.map((r) => (
                 <TableRow key={r.id} hover>
                   <TableCell>{r.title}</TableCell>
+                  <TableCell>{r.participantCount}</TableCell>
                   <TableCell>{roomNameById.get(r.roomId) ?? `#${r.roomId}`}</TableCell>
                   <TableCell>{formatFinnishDateTime(r.startsAt)}</TableCell>
                   <TableCell>{formatFinnishDateTime(r.endsAt)}</TableCell>
@@ -115,7 +117,7 @@ export function ReservationsList({ rooms, refreshToken }: Props) {
 
               {reservations.length === 0 && !loading && (
                 <TableRow>
-                  <TableCell colSpan={5}>Ei varauksia.</TableCell>
+                  <TableCell colSpan={6}>Ei varauksia.</TableCell>
                 </TableRow>
               )}
             </TableBody>
