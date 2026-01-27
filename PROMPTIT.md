@@ -1442,3 +1442,96 @@ Yes — that’s possible, but not reliably with the browser’s native `datetim
 If you want, I can also make “End date” auto-fill from the start date (common UX) so you usually only pick the end time.
 
 Made changes.
+
+# New chat (Evaluating the quality of the backend)
+
+User: Tell me about the choices you made concerning the integrity, validation and quality of the data flow in the backend
+
+GitHub Copilot: ### Data flow shape (DTO → Controller → Service → Repository → Entity)
+- **API boundary uses DTOs** (`CreateRoomRequest`, `CreateReservationRequest`, `RoomResponse`, `ReservationResponse`) so persistence entities (`Room`, `Reservation`) aren’t exposed directly. This keeps the wire format stable and reduces accidental data leakage (e.g., JPA lazy fields).
+- **Controllers are thin**: they only accept validated input, call a service, and map the result to a response record. Business rules live in services, not controllers.
+
+---
+
+### Validation strategy (bean validation + explicit domain checks)
+- **Request-level validation via `jakarta.validation`**:
+  - `@Valid` on controller method parameters triggers bean validation for the request records.
+  - `CreateRoomRequest` uses `@NotBlank name` and `@NotNull capacity`.
+  - `CreateReservationRequest` uses `@NotNull` for IDs/timestamps, `@NotBlank` for title.
+
+- **Business/domain validation in services** (the authoritative layer):
+  - `RoomService.create(...)` enforces:
+    - name present/blank check, then `trim()`
+    - capacity must be `> 0`
+    - room name uniqueness (`findByName(trimmedName)`)
+  - `ReservationService.create(...)` enforces:
+    - starts/ends required
+    - **temporal ordering** (`startsAt < endsAt`)
+    - **not in the past** relative to an injected `Clock`
+    - room must exist
+    - participant count must not exceed room capacity
+    - **no overlap** via repository `existsOverlappingInRoom(...)`
+
+This split is good: bean validation catches “shape” issues early; service checks enforce cross-field and persistence-aware rules.
+
+---
+
+### Integrity choices (time normalization, constraints, transactions, error mapping)
+- **Time integrity / consistency**
+  - All reservation times are normalized to **Europe/Helsinki** using `withZoneSameInstant(TimeConfig.HELSINKI)`.
+  - `Clock` is injected (via `TimeConfig`) to make “now” deterministic and testable, rather than calling `ZonedDateTime.now()` directly.
+
+- **Transactional boundaries**
+  - Writes are `@Transactional` (`create`, `delete`), reads use `@Transactional(readOnly = true)` (`get`, `list`), which helps consistency and can improve performance with some JPA providers.
+
+- **Database-level integrity**
+  - `Room.name` is `unique = true` and `nullable = false`; `capacity` is `nullable = false`.
+  - `Reservation` fields are `nullable = false`, and the room relationship is mandatory (`optional = false`, `nullable = false`).
+
+- **API-level error semantics**
+  - Services throw typed exceptions (`BadRequestException`, `NotFoundException`, `ConflictException`) matching typical HTTP semantics (400/404/409), keeping controllers clean.
+
+---
+
+### Quality observations / gaps worth fixing
+- **`@NotNull int participantCount` is ineffective**: primitives can’t be null, so that annotation doesn’t add validation. Prefer `Integer` plus `@NotNull`, and add `@Min(1)` (same for capacity).
+- **Missing basic numeric constraints at the API layer**:
+  - `capacity` and `participantCount` should have `@Min(1)` (and maybe an upper bound).
+- **Overlap check is application-level only**:
+  - `existsOverlappingInRoom(...)` prevents overlaps in normal cases, but **concurrent creates** can still race unless backed by a DB constraint/locking strategy.
+- **`@SuppressWarnings("null")` in `RoomController`** looks accidental and can be removed unless there’s a specific static-analysis issue you’re addressing.
+
+If you want, I can propose a minimal patch to tighten request validation (`@Min`, `Integer` types) and remove the unnecessary suppression, without changing the overall architecture.
+
+User: How would you evaluate the quality of the backend if it would be deployed to production environment right now?
+
+GitHub Copilot: ## Production-readiness assessment (as-is)
+
+### What looks solid
+- **Clear layering**: controllers → services → repositories; DTOs for API responses/requests.
+- **Basic domain validation**: room name/capacity checks; reservation time ordering; “not in the past” check; overlap check.
+- **Time zone intent is explicit** via `TimeConfig.HELSINKI` and a `Clock` bean (good for testing and determinism).
+
+### High-risk issues for production
+- **Concurrency/race conditions**
+  - `RoomService.create()` checks `findByName()` then saves. Under concurrent requests, duplicates can slip past the check; you rely on the DB unique constraint to reject one, but you **don’t catch/translate** that failure into a clean API error.
+  - Reservation overlap logic is also **check-then-insert**; two concurrent overlapping creates can both pass `existsOverlappingInRoom(...)` and then both insert unless you add locking/constraints.
+- **Validation gaps / incorrect annotations**
+  - `CreateReservationRequest` uses `@NotNull int participantCount` — `@NotNull` on a primitive is ineffective. Also there’s **no check for `participantCount <= 0`** in `ReservationService`.
+  - Consider `@Min(1)` (and using `Integer`) for `participantCount`, and similarly `@Min(1)` for capacity at the DTO layer.
+- **Potential JPA lazy-loading pitfalls**
+  - `Reservation.room` is `LAZY`. In controllers you call `reservation.getRoom().getId()` when mapping to response. Depending on persistence context/lifecycle, this can become a **`LazyInitializationException`** (often shows up in list/get endpoints).
+  - Safer patterns: fetch-join in queries, map inside transactional boundary, or return projections/DTOs directly from repository.
+- **Date/time persistence concerns**
+  - Persisting `ZonedDateTime` with JPA can be provider- and DB-dependent. Many teams standardize on **`Instant` / `OffsetDateTime`** in entities + convert at boundaries to avoid subtle bugs.
+- **No visible global exception handling**
+  - You throw `BadRequestException/ConflictException/NotFoundException`, but there’s no shown `@ControllerAdvice` mapping them to consistent HTTP status + error body. If missing, responses may be inconsistent or leak internals.
+
+### Operational gaps (typical production requirements)
+- **Security**: no authentication/authorization shown (anyone can create/delete reservations).
+- **Observability**: no structured logging, request correlation IDs, metrics, tracing, or health/readiness endpoints shown.
+- **API hygiene**: list endpoints have **no pagination/filtering** (could become a performance problem quickly).
+- **Testing**: no unit/integration tests shown, especially around overlap logic and time-zone behavior.
+
+### Overall verdict
+I wouldn’t ship this to production *unchanged*. The code is clean and understandable, but the **race conditions**, **validation holes**, and **JPA/lazy + time handling risks** are the kinds of issues that cause real production incidents (double-bookings, 500s under load, inconsistent error responses). Addressing those plus adding basic security/observability would move it much closer to production quality.
