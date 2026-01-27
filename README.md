@@ -61,6 +61,7 @@ npm run dev
 - Health endpoint: `GET http://localhost:8080/api/health`
 - Actuator health: `GET http://localhost:8080/actuator/health`
 - Swagger UI: `http://localhost:8080/swagger-ui/index.html`
+- Swagger api-docs: `http://localhost:8080/v3/api-docs`
 - H2 console: `http://localhost:8080/h2-console`
   - JDBC URL: `jdbc:h2:mem:varaamo`
   - User: `sa`
