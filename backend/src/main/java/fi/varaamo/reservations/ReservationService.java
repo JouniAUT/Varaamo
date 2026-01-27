@@ -55,6 +55,10 @@ public class ReservationService {
 			throw new BadRequestException("Participant count exceeds room capacity");
 		}
 
+		if (participantCount <= 0) {
+			throw new BadRequestException("Participant count must be positive");
+		}
+
 		boolean overlaps = reservationRepository.existsOverlappingInRoom(room.getId(), startsAtHelsinki, endsAtHelsinki);
 		if (overlaps) {
 			throw new ConflictException("Reservation overlaps an existing reservation in the room");
