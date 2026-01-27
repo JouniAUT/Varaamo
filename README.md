@@ -1,6 +1,20 @@
 # Varaamo (Backend)
 
-Spring Boot backend for a conference room reservation system.
+Varaamo is a conference room reservation system. The system allows the user to make and delete reservations.
+
+### Technology stack
+
+#### Backend
+- Java 21
+- Springboot 3.5.9
+- Maven wrapper
+- H2 in-memory (for now)
+
+#### Frontend
+- React
+- TypeScript
+- Vite
+
 
 ## Prerequisites
 
@@ -38,7 +52,9 @@ npm run dev
 ```
 
 - Frontend: `http://localhost:5173/`
-- Backend APIs used by the UI (proxied in dev): `GET/POST http://localhost:8080/rooms`, `GET/POST/DELETE http://localhost:8080/reservations`
+- Backend APIs used by the UI (proxied in dev): 
+- `GET/POST http://localhost:8080/rooms`, 
+- `GET/POST/DELETE http://localhost:8080/reservations`
 
 ## Useful URLs (when running)
 
